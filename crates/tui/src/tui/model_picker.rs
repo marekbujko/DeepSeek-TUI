@@ -402,7 +402,7 @@ fn picker_model_rows_for_app(app: &App) -> Vec<ModelPickerRow> {
             (provider != app.api_provider).then_some((key, provider, model))
         })
         .collect();
-    other_provider_models.sort_by(|(a, ..), (b, ..)| a.cmp(b));
+    other_provider_models.sort_by_key(|(a, ..)| *a);
     for (_key, provider, model) in other_provider_models {
         let model = model.trim();
         if model.is_empty() {
