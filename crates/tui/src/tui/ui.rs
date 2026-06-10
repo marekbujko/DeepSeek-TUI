@@ -134,7 +134,7 @@ use super::slash_menu::{
     apply_slash_menu_selection, partial_inline_skill_mention_at_cursor,
     try_autocomplete_slash_command, visible_slash_menu_entries,
 };
-use super::views::{ConfigView, HelpView, ModalKind, ShellControlView, ViewEvent};
+use super::views::{ConfigView, HelpView, ModalKind, ViewEvent};
 use super::widgets::pending_input_preview::{ContextPreviewItem, PendingInputPreview};
 use super::widgets::{ChatWidget, ComposerWidget, HeaderData, HeaderWidget, Renderable};
 
@@ -7924,15 +7924,6 @@ async fn handle_view_events(
             ViewEvent::ContextMenuSelected { action } => {
                 handle_context_menu_action(app, action);
             }
-            ViewEvent::ShellControlBackground => {
-                request_foreground_shell_background(app);
-            }
-            ViewEvent::ShellControlCancel => {
-                app.backtrack.reset();
-                engine_handle.cancel();
-                mark_active_turn_cancelled_locally(app);
-                app.status_message = Some("Request cancelled".to_string());
-            }
         }
     }
 
@@ -8777,16 +8768,6 @@ fn render_toast_stack_overlay(
         let line = ratatui::text::Line::styled(format!(" {} ", toast.text), style);
         f.render_widget(ratatui::widgets::Paragraph::new(line), row);
     }
-}
-
-pub(crate) fn open_shell_control(app: &mut App) {
-    if !app.is_loading || !active_foreground_shell_running(app) {
-        app.status_message = Some("No foreground shell command to control".to_string());
-        return;
-    }
-
-    app.view_stack.push(ShellControlView::new());
-    app.status_message = Some("Shell control opened".to_string());
 }
 
 pub(crate) fn request_foreground_shell_background(app: &mut App) {
