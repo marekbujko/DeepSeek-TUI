@@ -125,6 +125,7 @@ impl AcpServer {
         match method {
             "initialize" => Ok(AcpDispatch::Response(initialize_result(
                 params.get("protocolVersion").and_then(Value::as_u64),
+                &self.config,
             ))),
             "session/new" => Ok(AcpDispatch::Response(self.new_session(params)?)),
             "session/prompt" => {
@@ -265,7 +266,7 @@ impl AcpError {
     }
 }
 
-fn initialize_result(client_protocol_version: Option<u64>) -> Value {
+fn initialize_result(client_protocol_version: Option<u64>, config: &Config) -> Value {
     json!({
         "protocolVersion": client_protocol_version
             .map(|version| version.min(ACP_PROTOCOL_VERSION))
@@ -288,8 +289,22 @@ fn initialize_result(client_protocol_version: Option<u64>) -> Value {
             "title": "codewhale",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "authMethods": []
+        "authMethods": acp_auth_methods(config)
     })
+}
+
+fn acp_auth_methods(config: &Config) -> Value {
+    let provider = config.api_provider().as_str();
+    json!([
+        {
+            "id": "codewhale-terminal-auth",
+            "name": "Set CodeWhale API key",
+            "description": format!("Run CodeWhale's terminal credential setup for the {provider} provider."),
+            "type": "terminal",
+            "args": ["auth", "set", "--provider", provider],
+            "env": {}
+        }
+    ])
 }
 
 fn extract_prompt_text(prompt: Option<&Value>) -> Option<String> {
@@ -420,7 +435,7 @@ mod tests {
 
     #[test]
     fn initialize_advertises_baseline_acp_agent() {
-        let result = initialize_result(Some(1));
+        let result = initialize_result(Some(1), &Config::default());
 
         assert_eq!(result["protocolVersion"], 1);
         assert_eq!(result["agentInfo"]["name"], "codewhale");
@@ -429,7 +444,11 @@ mod tests {
             result["agentCapabilities"]["promptCapabilities"]["embeddedContext"],
             true
         );
-        assert_eq!(result["authMethods"], json!([]));
+        assert_eq!(result["authMethods"][0]["type"], "terminal");
+        assert_eq!(
+            result["authMethods"][0]["args"],
+            json!(["auth", "set", "--provider", "deepseek"])
+        );
     }
 
     #[test]

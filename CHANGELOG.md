@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ephemeral generated project context (#3058).** Opening CodeWhale in a
   directory with no instruction files now keeps the bounded generated project
   overview in memory instead of creating `.codewhale/instructions.md`.
+- **ACP registry auth metadata (#1447).** The ACP stdio adapter now advertises
+  terminal authentication setup in `initialize.authMethods`, matching the
+  registry's validation requirement.
 - **Cursor-style activity metadata rows (#3146).** Dense successful tool-run
   summaries now render as a single muted `Explored ...` / `Updated metadata`
   row, include short command-family labels for successful generic verifier
