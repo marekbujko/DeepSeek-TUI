@@ -305,13 +305,15 @@ fn load_handoff_block(workspace: &Path) -> Option<String> {
 /// Core: task execution, tool-use rules, output format, toolbox reference,
 /// "When NOT to use" guidance, sub-agent sentinel protocol.
 ///
-/// `prompts/constitution.yaml` + `render_constitution.py` exist as the
-/// intended generation pipeline, but the renderer is NOT yet reconciled
-/// with this committed markdown (#3015): it emits a much shorter document,
-/// bakes the default model id over the `{model_id}` placeholder, and
-/// duplicates the Authority Recap that `compose` appends at runtime. Do
-/// NOT regenerate this file from the renderer until that gap is closed —
-/// edit the markdown directly and mirror structural changes into the YAML.
+/// This markdown is the single hand-maintained source of the constitutional
+/// system prompt. The earlier YAML + Python-renderer generation pipeline
+/// (`constitution.yaml` / `render_constitution.py`) was retired because it
+/// had drifted from this file since the v4 "zero ceremony" adoption and the
+/// renderer could no longer reproduce it byte-for-byte. The layered runtime
+/// assembly composes this core with mode / approval / skills /
+/// context-management / compaction / authority-recap layers at runtime (see
+/// `system_prompt_for_mode_with_context_skills_and_session`). Edit this file
+/// directly; `constitution_md_carries_required_structure` guards its skeleton.
 pub const BASE_PROMPT: &str = include_str!("prompts/constitution.md");
 
 // ── Embedder prompt overrides ──
@@ -1075,9 +1077,9 @@ pub(crate) fn compose_prompt_with_approval_model_and_shell(
 }
 
 fn compose_default_static_layers(_personality: Personality, model_id: &str) -> String {
-    // Personality is now folded into the YAML constitution (constitution.yaml).
-    // No separate overlay is appended — the base prompt already carries voice,
-    // tone, and presentation guidance via the preamble and article text.
+    // Personality is folded into the constitutional preamble/articles — no
+    // separate overlay is appended. The base prompt already carries voice,
+    // tone, and presentation guidance.
     apply_model_template(effective_base_prompt().trim(), model_id, None)
 }
 
@@ -2630,6 +2632,70 @@ mod tests {
         // request-time runtime metadata.
         assert!(!prompt.contains("Mode: Agent"));
         assert!(!prompt.contains("Approval Policy:"));
+    }
+
+    /// `constitution.md` is the single hand-maintained source of the
+    /// constitutional system prompt — the YAML + Python-renderer pipeline was
+    /// retired because it had drifted from this file since the v4 "zero
+    /// ceremony" adoption. This test replaces that renderer's `--check` sync
+    /// guard: it asserts the markdown carries the required structural skeleton
+    /// AND that every section lands in cache-stable order (most-static first,
+    /// volatile-content-last), so a hand-edit that drops an article or reorders
+    /// the tiered sections fails the build instead of silently shipping a
+    /// malformed prompt.
+    #[test]
+    fn constitution_md_carries_required_structure() {
+        let md = BASE_PROMPT;
+        assert!(md.contains("## CONSTITUTION OF CODEWHALE"), "missing title");
+        assert!(md.contains("### Preamble"), "missing preamble");
+        for article in [
+            "### I. Ground Truth",
+            "### II. Verification",
+            "### III. Momentum",
+            "### IV. Legacy",
+            "### V. Help",
+            "### VI. Priority",
+        ] {
+            assert!(
+                md.contains(article),
+                "constitution.md missing article: {article}"
+            );
+        }
+        for section in [
+            "## STATUTES (Tier 2)",
+            "## REGULATIONS (Tier 3)",
+            "## EVIDENCE (Tier 6)",
+        ] {
+            assert!(
+                md.contains(section),
+                "constitution.md missing section: {section}"
+            );
+        }
+        // Cache-stable ordering: preamble -> articles I..VI -> statutes ->
+        // regulations -> evidence. Reordering forfeits the prefix cache for
+        // the tail of every request.
+        let mut cursor = 0usize;
+        for needle in [
+            "### Preamble",
+            "### I. Ground Truth",
+            "### II. Verification",
+            "### III. Momentum",
+            "### IV. Legacy",
+            "### V. Help",
+            "### VI. Priority",
+            "## STATUTES (Tier 2)",
+            "## REGULATIONS (Tier 3)",
+            "## EVIDENCE (Tier 6)",
+        ] {
+            let pos = md
+                .find(needle)
+                .unwrap_or_else(|| panic!("ordering check: {needle:?} not found"));
+            assert!(
+                pos >= cursor,
+                "cache-stable ordering broken: {needle:?} at {pos} precedes a previous section at {cursor}"
+            );
+            cursor = pos + needle.len();
+        }
     }
 
     /// Gate against shipping a release with a missing CHANGELOG entry — which
